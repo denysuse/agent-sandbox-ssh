@@ -20,6 +20,18 @@ berhasil dibuka akses SSH-nya — dan langsung dipakai untuk pekerjaan nyata
 
 > English summary: [README.en.md](README.en.md)
 
+> **Pembaruan 3 Nov 2026, dari kasus yang sama:** jalur mesh di atas
+> terbukti bisa gagal TOTAL di lapisan proxy/relay milik pihak ketiga —
+> percobaan koneksi ditutup sebelum mencapai sshd sandbox, tanpa satu pun
+> entri di log SSH target, padahal kedua node berstatus online. Segmen
+> yang gagal bukan milik kita dan tidak bisa diperbaiki dari sisi kita.
+> Sejak itu pola yang dipakai sebagai **jalur DEFAULT adalah tunnel balik
+> SSH murni** ke server relay milik sendiri (`scripts/connect-tunnel.sh`),
+> dan jalur mesh turun menjadi alternatif. Panduan di bawah tetap
+> mendokumentasikan pola mesh (ia bekerja dan berguna), dengan pola
+> tunnel dipromosikan di bagian "Alternatif" — bacalah bagian itu sebagai
+> rekomendasi utama, bukan cadangan.
+
 ## Route koneksinya
 
 ```
@@ -117,6 +129,8 @@ sisi. Lihat "Jebakan" nomor 5 untuk alasannya.
 | --- | --- |
 | `scripts/target-setup.sh` | Persiapan sisi sandbox: cek lingkungan, pasang Tailscale, pasang kunci publik, cek sshd |
 | `scripts/connect.sh` | Sisi operator: login SSH dengan timeout panjang + coba-ulang sekali |
+| `scripts/connect-tunnel.sh` | Sisi operator: login lewat TUNNEL BALIK di server relay milikmu (pola DEFAULT sejak 3 Nov 2026); membawa jebakan perintah bersarang `%%h:%%p` |
+| `scripts/health-check.sh` | Diagnosis ±30 detik: port balik di relay, login via tunnel, probe jalur mesh — membedakan sandbox mati / tunnel putus / jalur mesh bermasalah / auth |
 | `scripts/ts-connect.py` | Helper ProxyCommand untuk lingkungan yang wajib keluar lewat proxy HTTP |
 | `scripts/send-files.sh` | Kirim folder sebagai satu arsip terverifikasi checksum |
 | `templates/email-ke-agen.md` | Templat instruksi bertahap untuk agen yang hanya bisa dihubungi lewat email |
@@ -150,6 +164,14 @@ sisi. Lihat "Jebakan" nomor 5 untuk alasannya.
    antar tugas sangat berharga (hasil pemasangan tetap ada); sandbox yang
    dibuang tiap sesi membuat seluruh pemasangan ini sia-sia. Tanyakan ke
    platform/agenmu sejak awal.
+8. **Perintah SSH bersarang meng-expand token tetangganya.** Bila
+   ProxyCommand-mu berisi perintah ssh lain yang juga punya ProxyCommand,
+   ssh terluar meng-expand `%h`/`%p` di SELURUH string — termasuk token
+   milik lompatan dalam. Gejalanya: autentikasi gagal "publickey denied"
+   di mesin yang salah, padahal semua kunci benar. Obatnya: token
+   lompatan dalam ditulis `%%h:%%p`. Dan pelajaran umumnya: perintah
+   bersarang yang sudah terbukti bekerja simpan sebagai skrip
+   tetap/helper, jangan dirakit ulang dari ingatan setiap kali.
 
 ## Keamanan
 
@@ -164,16 +186,29 @@ sisi. Lihat "Jebakan" nomor 5 untuk alasannya.
 - Cabut akses semudah memasangnya: hapus baris kunci dari
   `authorized_keys` di sandbox, atau keluarkan perangkatnya dari tailnet.
 
-## Alternatif bila tidak mau bergantung pada Tailscale
+## Alternatif — dan rekomendasi DEFAULT: tunnel balik SSH murni
 
+- **Tunnel balik SSH murni (sejak 3 Nov 2026: pola DEFAULT pada kasus
+  nyata panduan ini)**: sandbox menyambung keluar ke server publik
+  milikmu (mis. VPS) memakai akun khusus yang dibatasi
+  `restrict,port-forwarding,permitlisten`, membuka port balik yang hanya
+  mengikat `127.0.0.1` di server, dijaga service systemd
+  (`Restart=always` + linger) agar menyambung ulang sendiri. Kamu masuk
+  lewat server itu dengan `scripts/connect-tunnel.sh`. Tanpa pihak
+  ketiga sama sekali; yang kamu kelola sendiri: kunci, keepalive, dan
+  pengamanannya — semuanya tertulis di skrip. Alasan promosi pola ini:
+  jalur mesh pernah gagal total di lapisan yang bukan milik kami (lihat
+  kotak pembaruan di atas), sedangkan tunnel hanya bergantung pada
+  server milik sendiri dan OpenSSH biasa.
 - **Headscale**: server koordinasi open-source peniru Tailscale, jalankan
   di server milikmu sendiri; klien di semua perangkat tetap sama, hanya
   alamat server koordinasinya yang diganti. Ketergantungan pada perusahaan
   Tailscale hilang, pekerjaan pemasangannya bertambah.
-- **Tunnel balik SSH murni**: sandbox menyambung keluar ke server publik
-  milikmu (mis. VPS) dan membuka port balik; kamu masuk lewat server itu.
-  Tanpa pihak ketiga sama sekali, tapi kamu mengelola sendiri kunci,
-  keepalive, dan pengamanannya.
+- **Jalur mesh (Tailscale) tetap sah** sebagai alternatif — ia yang
+  pertama terbukti pada kasus ini dan nyaman untuk banyak perangkat.
+  Bila memakai dua jalur, putuskan sejak awal mana yang DEFAULT dan mana
+  yang diagnosis; `scripts/health-check.sh` membantu membedakan jalur
+  mana yang hidup saat salah satunya putus.
 
 ## Lisensi
 
