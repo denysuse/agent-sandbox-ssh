@@ -1,0 +1,10 @@
+# Jangan pernah commit kunci privat atau kredensial
+*.pem
+*.key
+id_ed25519*
+id_rsa*
+agent-access
+agent-access.pub
+.env
+*secret*
+paket*.tar.gz
